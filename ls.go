@@ -236,6 +236,9 @@ func main() {
 		log.Fatal(err)
 	}
 
+	if len(args) == 0 || args[len(args)-1][0] == '-' {
+		args = append(args, ".")
+	}
 	if len(args) > 0 {
 		lastArg := args[len(args)-1]
 		if lastArg[0] == '/' {
