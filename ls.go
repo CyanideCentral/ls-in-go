@@ -27,6 +27,9 @@ var showAll = false
 //-d
 var dirOnly = false
 
+//Last argument, or "." if absent
+//var shArg = ""
+
 func totalBlocks(dir string) int {
 	total := 0
 	file, err := os.Open(dir)
@@ -77,13 +80,49 @@ func getStat(file string) syscall.Stat_t {
 	return stat
 }
 
+func printList(dir *os.File, base string) {
+	path := dir.Name() + "/" + base
+	/* cfile, err1 := os.Open(path)
+	if err1 != nil {
+		log.Fatal(err1)
+	} */
+	var stat syscall.Stat_t
+	if err2 := syscall.Stat(path, &stat); err2 != nil {
+		log.Fatal(err2)
+	}
+	cfinfo, err3 := os.Stat(path)
+	if err3 != nil {
+		log.Fatal(err3)
+	}
+	if showInode {
+		fmt.Printf("%v ", stat.Ino)
+	}
+	fmt.Printf("%v %v ", cfinfo.Mode(), stat.Nlink)
+	//print username and group name
+	fu, err := user.LookupId(fmt.Sprint(stat.Uid))
+	if err != nil {
+		log.Fatal(err)
+	}
+	fg, err := user.LookupGroupId(fmt.Sprint(stat.Gid))
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%v %v %v %v ", fu.Username, fg.Name, cfinfo.Size(), cfinfo.ModTime().Format("Jan  2 15:04"))
+	//print file name
+	fmt.Println(base)
+}
+
 func walk(file *os.File, prefix string) {
 	/*fi, err1 := file.Stat()
 	if err1 != nil {
 		log.Fatal(err1)
 	}*/
 	if dirOnly {
-		display(file)
+		if showList {
+			printList(file, ".")
+		} else {
+			fmt.Println(prefix)
+		}
 		return
 	}
 	if recursive {
@@ -117,41 +156,16 @@ func walk(file *os.File, prefix string) {
 	}
 
 	sort.Sort(sort.StringSlice(children))
-	for _, cinfo := range children {
-		if len(cinfo) == 0 {
+	for _, base := range children {
+		if len(base) == 0 {
 			continue
 		}
 		//
 		if showList {
-			path := file.Name() + "/" + cinfo
-			/* cfile, err1 := os.Open(path)
-			if err1 != nil {
-				log.Fatal(err1)
-			} */
-			var stat syscall.Stat_t
-			if err2 := syscall.Stat(path, &stat); err2 != nil {
-				log.Fatal(err2)
-			}
-			cfinfo, err3 := os.Stat(path)
-			if err3 != nil {
-				log.Fatal(err3)
-			}
-			if showInode {
-				fmt.Printf("%v ", stat.Ino)
-			}
-			fmt.Printf("%v %v ", cfinfo.Mode(), stat.Nlink)
-			fmt.Println(cinfo)
-			fu, err := user.LookupId(fmt.Sprint(stat.Uid))
-			if err != nil {
-				log.Fatal(err)
-			}
-			fg, err := user.LookupGroupId(fmt.Sprint(stat.Gid))
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Printf("%v %v ", fu.Username, fg.Name)
+			printList(file, base)
+
 		} else {
-			fmt.Print(cinfo, "  ")
+			fmt.Print(base, "  ")
 		}
 	}
 	fmt.Println("")
