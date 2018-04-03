@@ -76,10 +76,6 @@ func getStat(file string) syscall.Stat_t {
 
 func printList(dir *os.File, base string) (out string) {
 	path := dir.Name() + "/" + base
-	/* cfile, err1 := os.Open(path)
-	if err1 != nil {
-		log.Fatal(err1)
-	} */
 	var stat syscall.Stat_t
 	if err2 := syscall.Stat(path, &stat); err2 != nil {
 		log.Fatal(err2)
@@ -88,6 +84,7 @@ func printList(dir *os.File, base string) (out string) {
 	if err3 != nil {
 		log.Fatal(err3)
 	}
+
 	if showInode {
 		out += fmt.Sprintf("%v | ", stat.Ino)
 	}
@@ -112,10 +109,6 @@ func printList(dir *os.File, base string) (out string) {
 }
 
 func walk(file *os.File, prefix string) {
-	/*fi, err1 := file.Stat()
-	if err1 != nil {
-		log.Fatal(err1)
-	}*/
 	if dirOnly {
 		if showList {
 			printList(file, ".")
@@ -136,7 +129,9 @@ func walk(file *os.File, prefix string) {
 		log.Fatal(err)
 	}
 	dirSize := len(dirInfo)
+	//Child file base names
 	children := make([]string, dirSize)
+	//List of child directories
 	cdirs := list.New()
 	isDir := map[string]bool{}
 	for i, cinfo := range dirInfo {
