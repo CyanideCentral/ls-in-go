@@ -6,10 +6,12 @@ import (
 	"log"
 	"os"
 	"os/user"
-	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
+
+	"github.com/logrusorgru/aurora"
+	"github.com/ryanuber/columnize"
 )
 
 //-R
@@ -27,8 +29,14 @@ var showAll = false
 //-d
 var dirOnly = false
 
-//Last argument, or "." if absent
-//var shArg = ""
+//-r
+var reverse = false
+
+//-U
+var unordered = false
+
+//Columnize configuration
+var colConfig = columnize.DefaultConfig()
 
 func totalBlocks(dir string) int {
 	total := 0
@@ -58,20 +66,6 @@ func totalBlocks(dir string) int {
 	return total
 }
 
-func display(file *os.File) {
-	if !showList {
-		fmt.Print(filepath.Base(file.Name()), " ")
-	} else {
-		var stat syscall.Stat_t
-		if err1 := syscall.Stat(file.Name(), &stat); err1 != nil {
-			log.Fatal(err1)
-		}
-		if showInode {
-			fmt.Print(stat.Ino, " ")
-		}
-	}
-}
-
 func getStat(file string) syscall.Stat_t {
 	var stat syscall.Stat_t
 	if err := syscall.Stat(file, &stat); err != nil {
@@ -80,7 +74,7 @@ func getStat(file string) syscall.Stat_t {
 	return stat
 }
 
-func printList(dir *os.File, base string) {
+func printList(dir *os.File, base string) (out string) {
 	path := dir.Name() + "/" + base
 	/* cfile, err1 := os.Open(path)
 	if err1 != nil {
@@ -95,9 +89,9 @@ func printList(dir *os.File, base string) {
 		log.Fatal(err3)
 	}
 	if showInode {
-		fmt.Printf("%v ", stat.Ino)
+		out += fmt.Sprintf("%v | ", stat.Ino)
 	}
-	fmt.Printf("%v %v ", cfinfo.Mode(), stat.Nlink)
+	out += fmt.Sprintf("%v | %v | ", cfinfo.Mode(), stat.Nlink)
 	//print username and group name
 	fu, err := user.LookupId(fmt.Sprint(stat.Uid))
 	if err != nil {
@@ -107,9 +101,14 @@ func printList(dir *os.File, base string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%v %v %v %v ", fu.Username, fg.Name, cfinfo.Size(), cfinfo.ModTime().Format("Jan  2 15:04"))
+	out += fmt.Sprintf("%v | %v | %v | %v | ", fu.Username, fg.Name, cfinfo.Size(), cfinfo.ModTime().Format("Jan  2 15:04"))
 	//print file name
-	fmt.Println(base)
+	if cfinfo.IsDir() {
+		out += fmt.Sprint(aurora.Bold(aurora.Blue(base)))
+	} else {
+		out += base
+	}
+	return out
 }
 
 func walk(file *os.File, prefix string) {
@@ -121,7 +120,7 @@ func walk(file *os.File, prefix string) {
 		if showList {
 			printList(file, ".")
 		} else {
-			fmt.Println(prefix)
+			fmt.Println(aurora.Bold(aurora.Blue(prefix)))
 		}
 		return
 	}
@@ -139,6 +138,7 @@ func walk(file *os.File, prefix string) {
 	dirSize := len(dirInfo)
 	children := make([]string, dirSize)
 	cdirs := list.New()
+	isDir := map[string]bool{}
 	for i, cinfo := range dirInfo {
 		if !showAll {
 			if cinfo.Name()[0] == '.' {
@@ -148,6 +148,7 @@ func walk(file *os.File, prefix string) {
 		children[i] = cinfo.Name()
 		if cinfo.IsDir() {
 			cdirs.PushBack(cinfo.Name())
+			isDir[cinfo.Name()] = true
 		}
 	}
 	if showAll {
@@ -155,17 +156,35 @@ func walk(file *os.File, prefix string) {
 		children = append(children, "..")
 	}
 
-	sort.Sort(sort.StringSlice(children))
-	for _, base := range children {
-		if len(base) == 0 {
-			continue
-		}
-		//
-		if showList {
-			printList(file, base)
-
+	if !unordered {
+		if reverse {
+			sort.Sort(sort.Reverse(sort.StringSlice(children)))
 		} else {
-			fmt.Print(base, "  ")
+			sort.Sort(sort.StringSlice(children))
+		}
+	}
+
+	if showList {
+		lines := make([]string, 0)
+		for _, base := range children {
+			if len(base) == 0 {
+				continue
+			}
+			lines = append(lines, printList(file, base))
+		}
+		result := columnize.Format(lines, colConfig)
+		fmt.Print(result)
+	} else {
+		for _, base := range children {
+			if len(base) == 0 {
+				continue
+			}
+			if isDir[base] || base == "." || base == ".." {
+				fmt.Print(aurora.Bold(aurora.Blue(base)))
+			} else {
+				fmt.Print(base)
+			}
+			fmt.Print("  ")
 		}
 	}
 	fmt.Println("")
@@ -204,10 +223,16 @@ func parseArg(ch rune) {
 		showList = true
 	case 'R':
 		recursive = true
+	case 'r':
+		reverse = true
+	case 'U':
+		unordered = true
 	}
 }
 
 func main() {
+	colConfig.Glue = " "
+
 	args := os.Args[1:]
 	dir := ""
 	prefix := "."
@@ -215,6 +240,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	if len(args) > 0 {
 		lastArg := args[len(args)-1]
 		if lastArg[0] == '/' {
@@ -223,6 +249,9 @@ func main() {
 			if prefix[len(prefix)-1] == '/' {
 				prefix = prefix[:len(prefix)-1]
 			}
+		} else if lastArg[0] == '.' {
+			dir = wd + "/" + lastArg
+			prefix = lastArg
 		}
 	}
 	for _, arg := range args {
@@ -231,9 +260,6 @@ func main() {
 				parseArg(ch)
 			}
 		}
-	}
-	if dir == "" {
-		dir = wd
 	}
 	handle(dir, prefix)
 }
